@@ -21,6 +21,13 @@ async function startTestServer(t, options = {}) {
   return { baseUrl: `http://127.0.0.1:${port}`, storageDir };
 }
 
+async function uploadDocument(baseUrl, content = 'conteudo de teste', name = 'nota.txt', owner = 'tiago') {
+  const formData = new FormData();
+  formData.append('file', new Blob([content], { type: 'text/plain' }), name);
+  formData.append('owner', owner);
+  return fetch(`${baseUrl}/upload`, { method: 'POST', body: formData });
+}
+
 // Teste de fumaça do seed: garante que o app Express foi exportado.
 // Novos testes serão adicionados durante os Steps 2, 6 e 7 com auxílio do Copilot.
 test('o app backend é exportado', () => {
@@ -28,26 +35,45 @@ test('o app backend é exportado', () => {
   assert.strictEqual(typeof app, 'function', 'o app Express deve ser uma função');
 });
 
-test('faz upload, lista e baixa um documento', async (t) => {
-  const { baseUrl } = await startTestServer(t);
+test('POST /upload armazena o arquivo e retorna os metadados', async (t) => {
+  const { baseUrl, storageDir } = await startTestServer(t);
 
-  const formData = new FormData();
-  formData.append('file', new Blob(['conteudo de teste'], { type: 'text/plain' }), 'nota.txt');
-  formData.append('owner', 'tiago');
-  const uploadResponse = await fetch(`${baseUrl}/upload`, { method: 'POST', body: formData });
+  const uploadResponse = await uploadDocument(baseUrl);
+
   assert.strictEqual(uploadResponse.status, 201);
   const uploadedDocument = await uploadResponse.json();
   assert.strictEqual(uploadedDocument.originalName, 'nota.txt');
   assert.strictEqual(uploadedDocument.owner, 'tiago');
+  assert.strictEqual(uploadedDocument.size, 17);
+  assert.ok(uploadedDocument.id);
+  assert.ok(uploadedDocument.uploadedAt);
+  assert.strictEqual(fs.readdirSync(storageDir).length, 1);
+});
+
+test('GET /documents lista os documentos enviados', async (t) => {
+  const { baseUrl } = await startTestServer(t);
+  const firstDocument = await (await uploadDocument(baseUrl, 'primeiro', 'primeiro.txt')).json();
+  const secondDocument = await (await uploadDocument(baseUrl, 'segundo', 'segundo.txt')).json();
 
   const listResponse = await fetch(`${baseUrl}/documents`);
+
   assert.strictEqual(listResponse.status, 200);
   const list = await listResponse.json();
-  assert.strictEqual(list.documents.length, 1);
-  assert.strictEqual(list.documents[0].id, uploadedDocument.id);
+  assert.strictEqual(list.documents.length, 2);
+  assert.deepStrictEqual(
+    new Set(list.documents.map((document) => document.id)),
+    new Set([firstDocument.id, secondDocument.id]),
+  );
+});
+
+test('GET /documents/:id/download retorna o conteúdo e o nome original', async (t) => {
+  const { baseUrl } = await startTestServer(t);
+  const uploadedDocument = await (await uploadDocument(baseUrl)).json();
 
   const downloadResponse = await fetch(`${baseUrl}/documents/${uploadedDocument.id}/download`);
+
   assert.strictEqual(downloadResponse.status, 200);
+  assert.match(downloadResponse.headers.get('content-disposition'), /attachment; filename="nota\.txt"/);
   assert.strictEqual(await downloadResponse.text(), 'conteudo de teste');
 });
 
