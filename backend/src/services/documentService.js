@@ -1,5 +1,5 @@
 function createDocumentService(repository, options = {}) {
-  const defaultOwner = options.defaultOwner || process.env.DEFAULT_OWNER || 'anonymous';
+  const defaultOwner = normalizeOwner(options.defaultOwner || process.env.DEFAULT_OWNER || 'anonymous');
 
   return {
     async upload(file, owner) {
@@ -10,7 +10,13 @@ function createDocumentService(repository, options = {}) {
         throw error;
       }
 
-      return repository.save(file, owner || defaultOwner);
+      try {
+        validateOriginalName(file.originalname);
+        return await repository.save(file, normalizeOwner(owner || defaultOwner));
+      } catch (error) {
+        await repository.removeUploadedFile(file);
+        throw error;
+      }
     },
 
     async list() {
@@ -26,7 +32,7 @@ function createDocumentService(repository, options = {}) {
         throw error;
       }
 
-      const filePath = repository.getFilePath(document);
+      const filePath = await repository.getFilePath(document);
       if (!filePath) {
         const error = new Error('Arquivo do documento não está disponível.');
         error.code = 'FILE_NOT_FOUND';
@@ -37,6 +43,26 @@ function createDocumentService(repository, options = {}) {
       return { document, filePath };
     },
   };
+}
+
+function normalizeOwner(owner) {
+  const normalizedOwner = String(owner).trim();
+  if (!normalizedOwner || normalizedOwner.length > 100 || /[\u0000-\u001f\u007f]/.test(normalizedOwner)) {
+    const error = new Error('O proprietário informado é inválido.');
+    error.code = 'INVALID_OWNER';
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalizedOwner;
+}
+
+function validateOriginalName(originalName) {
+  if (!originalName || originalName.length > 255 || /[\u0000-\u001f\u007f]/.test(originalName)) {
+    const error = new Error('O nome do arquivo é inválido.');
+    error.code = 'INVALID_FILE_NAME';
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 module.exports = { createDocumentService };
