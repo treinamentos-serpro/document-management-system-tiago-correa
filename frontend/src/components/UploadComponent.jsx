@@ -39,15 +39,15 @@ export default function UploadComponent({ onUploaded, onError }) {
           <h2>Adicionar arquivo</h2>
           <p className="muted">Escolha um arquivo para guardar no armazenamento local.</p>
         </div>
-        <label className="file-field">
-          <span>Arquivo</span>
-          <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+        <div className="file-field">
+          <label htmlFor="document-file">Arquivo</label>
+          <input id="document-file" type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           <strong>{file?.name || 'Selecionar arquivo'}</strong>
-        </label>
-        <label className="owner-field">
-          <span>Proprietário</span>
-          <input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Opcional" />
-        </label>
+        </div>
+        <div className="owner-field">
+          <label htmlFor="document-owner">Proprietário</label>
+          <input id="document-owner" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Opcional" />
+        </div>
         <button type="submit" disabled={isUploading}>{isUploading ? 'Enviando...' : 'Enviar documento'}</button>
         {success && <p className="feedback success" role="status">{success}</p>}
       </div>

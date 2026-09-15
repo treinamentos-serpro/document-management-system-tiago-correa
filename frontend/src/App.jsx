@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchDocuments } from './services/documentService';
 import UploadComponent from './components/UploadComponent';
 import DocumentList from './components/DocumentList';
@@ -8,21 +8,32 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const latestRequest = useRef(0);
 
-  async function loadDocuments() {
+  async function loadDocuments(options = {}) {
+    const requestId = ++latestRequest.current;
     setIsLoading(true);
     try {
-      setDocuments(await fetchDocuments());
-      setError('');
+      const loadedDocuments = await fetchDocuments(options);
+      if (requestId === latestRequest.current) {
+        setDocuments(loadedDocuments);
+        setError('');
+      }
     } catch (loadError) {
-      setError(loadError.message);
+      if (loadError.name !== 'AbortError' && requestId === latestRequest.current) {
+        setError(loadError.message);
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequest.current) {
+        setIsLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadDocuments();
+    const controller = new AbortController();
+    loadDocuments({ signal: controller.signal });
+    return () => controller.abort();
   }, []);
 
   return (
@@ -48,7 +59,7 @@ export default function App() {
             <span className="document-count">{documents.length} {documents.length === 1 ? 'arquivo' : 'arquivos'}</span>
           </div>
           {error && <p className="feedback error" role="alert">{error}</p>}
-          {isLoading ? <p className="empty-state">Carregando documentos...</p> : <DocumentList documents={documents} />}
+          {isLoading ? <p className="empty-state">Carregando documentos...</p> : <DocumentList documents={documents} onError={setError} />}
         </section>
       </section>
     </main>

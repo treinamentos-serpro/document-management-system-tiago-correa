@@ -1,9 +1,36 @@
-import { getDownloadUrl } from '../services/documentService';
+import { useState } from 'react';
+import { downloadDocument } from '../services/documentService';
 
-export default function DownloadButton({ document }) {
+export default function DownloadButton({ document, onError }) {
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  async function handleDownload() {
+    setIsDownloading(true);
+    onError('');
+    try {
+      const blob = await downloadDocument(document.id);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = document.originalName;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      onError(error.message);
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   return (
-    <a className="download-button" href={getDownloadUrl(document.id)} download aria-label={`Baixar ${document.originalName}`}>
-      Baixar <span aria-hidden="true">↓</span>
-    </a>
+    <button
+      className="download-button"
+      type="button"
+      disabled={isDownloading}
+      onClick={handleDownload}
+      aria-label={`Baixar ${document.originalName}`}
+    >
+      {isDownloading ? 'Baixando...' : 'Baixar'} <span aria-hidden="true">↓</span>
+    </button>
   );
 }

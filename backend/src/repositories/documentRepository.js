@@ -1,25 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
-const multer = require('multer');
 
 function createDocumentRepository(storageDir = process.env.STORAGE_DIR || path.resolve(__dirname, '../../storage')) {
-  fs.mkdirSync(storageDir, { recursive: true });
+  const resolvedStorageDir = path.resolve(storageDir);
+  fs.mkdirSync(resolvedStorageDir, { recursive: true });
   const documents = new Map();
-  const storage = multer.diskStorage({
-    destination: storageDir,
-    filename: (req, file, callback) => {
-      const extension = path.extname(file.originalname).toLowerCase();
-      callback(null, `${crypto.randomUUID()}${extension}`);
-    },
-  });
 
   return {
-    upload: multer({
-      storage,
-      limits: { fileSize: Number(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 },
-    }),
-
     async save(file, owner) {
       const id = path.basename(file.filename, path.extname(file.filename));
       const document = {
@@ -44,12 +31,45 @@ function createDocumentRepository(storageDir = process.env.STORAGE_DIR || path.r
       return documents.get(id) || null;
     },
 
-    getFilePath(document) {
-      const filePath = path.resolve(storageDir, document.storedName);
-      if (path.dirname(filePath) !== path.resolve(storageDir)) {
+    async removeUploadedFile(file) {
+      if (!file?.filename) {
+        return;
+      }
+
+      const filePath = path.resolve(resolvedStorageDir, file.filename);
+      if (path.dirname(filePath) !== resolvedStorageDir) {
+        return;
+      }
+      await fs.promises.unlink(filePath).catch((error) => {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      });
+    },
+
+    async getFilePath(document) {
+      const filePath = path.resolve(resolvedStorageDir, document.storedName);
+      if (path.dirname(filePath) !== resolvedStorageDir) {
         return null;
       }
-      return filePath;
+
+      try {
+        const fileStats = await fs.promises.lstat(filePath);
+        if (!fileStats.isFile() || fileStats.isSymbolicLink()) {
+          return null;
+        }
+
+        const [realStorageDir, realFilePath] = await Promise.all([
+          fs.promises.realpath(resolvedStorageDir),
+          fs.promises.realpath(filePath),
+        ]);
+        return path.dirname(realFilePath) === realStorageDir ? realFilePath : null;
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          return null;
+        }
+        throw error;
+      }
     },
   };
 }
